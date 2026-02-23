@@ -1,0 +1,17 @@
+
+__pycache__/
+merged_dataset//
+model_outputs/
+models/
+venv/
+route/__pycache__/
+
+
+*.py[cod]
+*$py.class
+
+# ----------------------------
+# Virtual Environment
+# ----------------------------
+env/
+.venv/
