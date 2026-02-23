@@ -1,6 +1,6 @@
 
 __pycache__/
-merged_dataset//
+merged_dataset/
 model_outputs/
 models/
 venv/
