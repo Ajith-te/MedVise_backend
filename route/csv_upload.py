@@ -2,6 +2,8 @@ import pandas as pd
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from datetime import datetime, timezone
+from dotenv import load_dotenv
+import os
 
 from database import get_patient_by_id, insert_many
 from utils import allowed_file, preprocess_patient_details, sanitize_patient
@@ -16,11 +18,17 @@ app.register_blueprint(predict_bp)
 app.register_blueprint(treatment_bp)
 
 
-CHUNK_SIZE = 5000
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 5000))
 
 
 def get_collection_name(email):
     return email.replace("@", "_").replace(".", "_")
+
+
+# Upload CSV Files
+@app.route("/", methods=["GET"])
+def index_files():
+    return "Welcome to MedVise Back-end server"
 
 
 # Upload CSV Files
@@ -102,7 +110,7 @@ def get_patients():
 
         summary = [
             {
-                "id": p.get("id"),
+                "patient_id": p.get("id"),
                 "name": p.get("name", "Unknown"),
                 "age": p.get("age"),
                 "gender": p.get("gender", "N/A"),
@@ -128,6 +136,7 @@ def get_patients():
 def get_patient_details(patient_id):
 
     try:
+        print(f"Fetching details for patient ID: {patient_id}")
         email = request.args.get("email")
         if not email:
             return jsonify({"error": "Email required"}), 400
@@ -135,6 +144,8 @@ def get_patient_details(patient_id):
         collection_name = get_collection_name(email)
 
         patient = get_patient_by_id(collection_name, patient_id)
+
+        print(f"Patient found: {patient}")
 
         if not patient:
             return jsonify({"error": "Patient not found"}), 404

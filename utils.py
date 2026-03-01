@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from database import db
 
 
-ALLOWED_EXTENSIONS = {".csv"}
+ALLOWED_EXTENSIONS = set(os.getenv("ALLOWED_EXTENSIONS", ".csv").split(","))
 
 
 def allowed_file(filename):
@@ -19,7 +19,7 @@ def load_collection(email, dataset_name):
     collection_name = email.replace("@", "_").replace(".", "_")
     collection = db[collection_name]
 
-    data = list(collection.find({"dataset_name": dataset_name}, {"_id": 0}))
+    data = list(collection.find({"dataset_file_name": dataset_name}, {"_id": 0}))
 
     if not data:
         return pd.DataFrame()
@@ -52,24 +52,34 @@ def preprocess_patient_details(email):
         "observations": load_collection(email, "observations.csv"),
     }
 
-    for name, df in datasets.items():
-        if name == "observations":
-            datasets[name] = convert_dates(df, ["DATE"])
-        else:
-            datasets[name] = convert_dates(df, ["START", "STOP"])
-        datasets[name] = datasets[name].drop_duplicates()
+    if not patients.empty:
+        patients.columns = patients.columns.str.upper()
 
+        if "ID" in patients.columns and "PATIENT" not in patients.columns:
+            patients.rename(columns={"ID": "PATIENT"}, inplace=True)
+
+    # Normalize each dataset table
+    for name, df in datasets.items():
+        print(f"{name} columns:", df.columns.tolist())
+        if not df.empty:
+            df.columns = df.columns.str.upper()
+
+            if "ID" in df.columns and "PATIENT" not in df.columns:
+                df.rename(columns={"ID": "PATIENT"}, inplace=True)
+            datasets[name] = df
 
     all_patients = []
 
     for _, row in patients.iterrows():
-        pid = str(row.get("Id", "")).strip()
+        pid = str(row.get("PATIENT", "")).strip()
         age = int((pd.Timestamp.now() - row["BIRTHDATE"]).days / 365) if pd.notna(row.get("BIRTHDATE")) else None
         patient_conditions = datasets["conditions"][datasets["conditions"]["PATIENT"] == pid]
         patient_conditions = patient_conditions[patient_conditions["DESCRIPTION"].apply(is_real_health_condition)]
         last_condition = patient_conditions.sort_values("START", ascending=False).iloc[0] if not patient_conditions.empty else None
 
         def filter_after_date(df, date_col):
+            if df.empty or "PATIENT" not in df.columns:
+                return []
             df_patient = df[df["PATIENT"] == pid].copy()
             return df_patient.to_dict(orient="records")
 
@@ -79,9 +89,10 @@ def preprocess_patient_details(email):
             "birthdate": row.get("BIRTHDATE"),
             "age": age,
             "gender": row.get("GENDER", "N/A"),
-            "city": row.get("ADDRESS_CITY", "N/A"),
-            "state": row.get("ADDRESS_STATE", "N/A"),
-            "country": row.get("ADDRESS_COUNTRY", "N/A"),
+            'address': row.get("ADDRESS", "N/A"),
+            "city": row.get("CITY", "N/A"),
+            "state": row.get("STATE", "N/A"),
+            "country": row.get("COUNTRY", "N/A"),
             "current_condition": last_condition.to_dict() if last_condition is not None else {},
             "conditions": filter_after_date(datasets["conditions"], "START"),
             "medications": filter_after_date(datasets["medications"], "START"),
@@ -89,6 +100,7 @@ def preprocess_patient_details(email):
             "procedures": filter_after_date(datasets["procedures"], "START"),
         }
         all_patients.append(patient_detail)
+
     return all_patients
 
 
